@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { ScrollArea } from './ui/scroll-area';
 import { Separator } from './ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { SpeechTranscription } from '../utils/speechTranscription';
 
 interface DoctorViewProps {
   accessibilityMode: boolean;
@@ -58,8 +59,65 @@ export function DoctorView({ accessibilityMode }: DoctorViewProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [consultationTranscript, setConsultationTranscript] = useState('');
   const [consultationRecords, setConsultationRecords] = useState<ConsultationRecord[]>([]);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [visualizerData, setVisualizerData] = useState<number[]>([]);
+  const [transcriptionStatus, setTranscriptionStatus] = useState<'ready' | 'recording' | 'processing' | 'error'>('ready');
+  const [errorMessage, setErrorMessage] = useState('');
+  
+  const speechTranscription = useRef(new SpeechTranscription());
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const visualizerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 模拟患者列表
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (visualizerRef.current) clearInterval(visualizerRef.current);
+    };
+  }, []);
+
+  const startTimer = () => {
+    setRecordingTime(0);
+    timerRef.current = setInterval(() => {
+      setRecordingTime(prev => prev + 1);
+    }, 1000);
+  };
+
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const startVisualizer = () => {
+    const bars = Array(32).fill(0);
+    setVisualizerData(bars);
+    
+    visualizerRef.current = setInterval(() => {
+      const data = speechTranscription.current.getAudioVisualizationData();
+      if (data) {
+        const newBars = Array(32).fill(0).map((_, index) => {
+          const value = data[Math.floor(index * data.length / 32)];
+          return Math.max(5, (value / 255) * 50);
+        });
+        setVisualizerData(newBars);
+      }
+    }, 50);
+  };
+
+  const stopVisualizer = () => {
+    if (visualizerRef.current) {
+      clearInterval(visualizerRef.current);
+      visualizerRef.current = null;
+    }
+    setVisualizerData([]);
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
   const [patients] = useState<Patient[]>([
     {
       id: '1',
@@ -144,35 +202,55 @@ export function DoctorView({ accessibilityMode }: DoctorViewProps) {
     }
   };
 
-  // 模拟语音问诊记录
-  const startConsultationRecording = () => {
-    setIsRecording(true);
-    setConsultationTranscript('');
-    
-    // 模拟医生问诊对话
-    const simulatedConsultation = `医生：请描述一下您的头痛具体是什么感觉？
-患者：就是右边太阳穴那里，一跳一跳的疼。
-医生：什么时候开始的？
-患者：三天前开始的，一开始还不是很疼，这两天越来越厉害了。
-医生：有没有恶心呕吐的症状？
-患者：有恶心，但是还没有吐过。
-医生：之前有没有类似的情况？
-患者：没有，这是第一次这么疼。
-医生：好的，我了解了。我给您开一些检查。`;
-    
-    let index = 0;
-    const interval = setInterval(() => {
-      if (index < simulatedConsultation.length) {
-        setConsultationTranscript(prev => prev + simulatedConsultation[index]);
-        index++;
-      } else {
-        clearInterval(interval);
-      }
-    }, 30);
+  // 真实语音问诊记录
+  const startConsultationRecording = async () => {
+    try {
+      setTranscriptionStatus('recording');
+      setConsultationTranscript('');
+      setErrorMessage('');
+      
+      await speechTranscription.current.startRecording();
+      setIsRecording(true);
+      
+      startTimer();
+      startVisualizer();
+    } catch (error) {
+      setTranscriptionStatus('error');
+      setErrorMessage(error instanceof Error ? error.message : '录音启动失败');
+    }
   };
 
-  const stopConsultationRecording = () => {
-    setIsRecording(false);
+  const stopConsultationRecording = async () => {
+    try {
+      setTranscriptionStatus('processing');
+      setIsRecording(false);
+      
+      stopTimer();
+      stopVisualizer();
+      
+      const audioBlob = await speechTranscription.current.stopRecording();
+      
+      const result = await speechTranscription.current.transcribeAudio(audioBlob, {
+        userId: 'doctor_001',
+        visitId: selectedPatient ? `visit_${selectedPatient.id}_${Date.now()}` : `visit_${Date.now()}`,
+        language: 'autodialect',
+        domain: 'medical'
+      });
+      
+      if (result.status === 'SUCCESS' && result.transcriptionText) {
+        setConsultationTranscript(result.transcriptionText);
+        setTranscriptionStatus('ready');
+      } else {
+        setTranscriptionStatus('error');
+        setErrorMessage(result.errorMessage || '转录失败');
+      }
+    } catch (error) {
+      setTranscriptionStatus('error');
+      setErrorMessage(error instanceof Error ? error.message : '处理录音失败');
+      setIsRecording(false);
+      stopTimer();
+      stopVisualizer();
+    }
   };
 
   const generateMedicalRecord = () => {
@@ -413,6 +491,10 @@ ${consultationTranscript}
                       border-2 rounded-lg p-6 transition-all
                       ${isRecording 
                         ? 'border-red-500 bg-red-50' 
+                        : transcriptionStatus === 'processing'
+                        ? 'border-blue-500 bg-blue-50'
+                        : transcriptionStatus === 'error'
+                        ? 'border-red-500 bg-red-50'
                         : 'border-gray-300 bg-gray-50'
                       }
                     `}>
@@ -422,11 +504,32 @@ ${consultationTranscript}
                             <Mic className="w-8 h-8 text-red-500 animate-pulse" />
                             <div className="absolute inset-0 rounded-full border-4 border-red-500 animate-ping opacity-75" />
                           </div>
-                          <div>
+                          <div className="flex-1">
                             <p className="text-red-600">正在录音...</p>
                             <p className="text-sm text-gray-600">
                               系统正在记录您与患者的对话
                             </p>
+                            <div className="text-lg font-bold text-red-600 mt-1">
+                              {formatTime(recordingTime)}
+                            </div>
+                          </div>
+                        </div>
+                      ) : transcriptionStatus === 'processing' ? (
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                          <div>
+                            <p className="text-blue-600">正在处理音频...</p>
+                            <p className="text-sm text-gray-600">
+                              AI正在转录问诊对话
+                            </p>
+                          </div>
+                        </div>
+                      ) : transcriptionStatus === 'error' ? (
+                        <div className="flex items-center gap-3">
+                          <AlertCircle className="w-8 h-8 text-red-500" />
+                          <div>
+                            <p className="text-red-600">录音失败</p>
+                            <p className="text-sm text-gray-600">{errorMessage}</p>
                           </div>
                         </div>
                       ) : (
@@ -442,6 +545,19 @@ ${consultationTranscript}
                       )}
                     </div>
 
+                    {/* 音频可视化 */}
+                    {isRecording && visualizerData.length > 0 && (
+                      <div className="flex justify-center items-end h-16 mt-4 gap-1">
+                        {visualizerData.map((height, index) => (
+                          <div
+                            key={index}
+                            className="w-1 bg-red-500 rounded-sm transition-all duration-100"
+                            style={{ height: `${height}px` }}
+                          />
+                        ))}
+                      </div>
+                    )}
+
                     {/* 实时转写 */}
                     {consultationTranscript && (
                       <div className="border rounded-lg p-4 bg-white">
@@ -456,15 +572,16 @@ ${consultationTranscript}
 
                     {/* 控制按钮 */}
                     <div className="flex gap-3">
-                      {!isRecording ? (
+                      {!isRecording && transcriptionStatus !== 'processing' ? (
                         <Button 
                           onClick={startConsultationRecording}
                           className="gap-2"
+                          disabled={transcriptionStatus === 'error'}
                         >
                           <Mic className="w-4 h-4" />
                           开始问诊录音
                         </Button>
-                      ) : (
+                      ) : isRecording ? (
                         <Button 
                           onClick={stopConsultationRecording}
                           variant="destructive"
@@ -473,9 +590,9 @@ ${consultationTranscript}
                           <StopCircle className="w-4 h-4" />
                           停止录音
                         </Button>
-                      )}
+                      ) : null}
                       
-                      {consultationTranscript && !isRecording && (
+                      {consultationTranscript && !isRecording && transcriptionStatus === 'ready' && (
                         <Button 
                           onClick={generateMedicalRecord}
                           className="gap-2"
@@ -484,16 +601,29 @@ ${consultationTranscript}
                           AI 生成病历总结
                         </Button>
                       )}
+                      
+                      {transcriptionStatus === 'error' && (
+                        <Button 
+                          onClick={() => {
+                            setTranscriptionStatus('ready');
+                            setErrorMessage('');
+                          }}
+                          variant="outline"
+                          className="gap-2"
+                        >
+                          重新开始
+                        </Button>
+                      )}
                     </div>
 
-                    {consultationTranscript && !isRecording && (
-                      <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
-                        <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+                    {consultationTranscript && !isRecording && transcriptionStatus === 'ready' && (
+                      <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
+                        <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
                         <div>
-                          <p className="text-amber-900 mb-1">
-                            AI 已完成对话转写
+                          <p className="text-green-900 mb-1">
+                            语音转录完成
                           </p>
-                          <p className="text-sm text-amber-700">
+                          <p className="text-sm text-green-700">
                             点击"AI 生成病历总结"按钮，系统将自动生成结构化病历
                           </p>
                         </div>

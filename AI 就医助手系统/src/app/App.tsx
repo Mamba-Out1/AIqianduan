@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { PatientView } from './components/PatientView';
 import { DoctorView } from './components/DoctorView';
+import { VoiceTranscriptionTest } from './components/VoiceTranscriptionTest';
 import { Button } from './components/ui/button';
-import { Users, Stethoscope } from 'lucide-react';
+import { Users, Stethoscope, Mic } from 'lucide-react';
 
 export default function App() {
-  const [viewMode, setViewMode] = useState<'patient' | 'doctor'>('patient');
+  const [viewMode, setViewMode] = useState<'patient' | 'doctor' | 'test'>('patient');
   const [accessibilityMode, setAccessibilityMode] = useState(false);
 
   return (
@@ -34,6 +35,14 @@ export default function App() {
               <Stethoscope className="w-4 h-4" />
               医生端
             </Button>
+            <Button
+              variant={viewMode === 'test' ? 'default' : 'outline'}
+              onClick={() => setViewMode('test')}
+              className="gap-2"
+            >
+              <Mic className="w-4 h-4" />
+              语音测试
+            </Button>
           </div>
         </div>
       </div>
@@ -44,8 +53,10 @@ export default function App() {
           accessibilityMode={accessibilityMode} 
           setAccessibilityMode={setAccessibilityMode}
         />
-      ) : (
+      ) : viewMode === 'doctor' ? (
         <DoctorView accessibilityMode={accessibilityMode} />
+      ) : (
+        <VoiceTranscriptionTest />
       )}
     </div>
   );
