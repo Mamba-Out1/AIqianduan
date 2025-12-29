@@ -78,7 +78,7 @@ public class MedicalSummaryController {
 
         try {
             // 获取转录文本
-            Transcript transcript = transcriptRepository.findByVisitId(visitId)
+            TRanscript transcript = transcriptRepository.findByVisitId(visitId)
                     .orElseThrow(() -> new RuntimeException("未找到visitId=" + visitId + "的转录记录"));
 
             log.info("【病历总结】找到转录记录，文本长度: {}", 
