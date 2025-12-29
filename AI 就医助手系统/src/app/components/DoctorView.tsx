@@ -253,6 +253,32 @@ export function DoctorView({ accessibilityMode }: DoctorViewProps) {
     }
   };
 
+  // 调用MedicalSummaryController接口生成病例总结
+  const generateMedicalSummaryFromAPI = async (patientId: string) => {
+    if (!selectedPatient) return;
+    
+    try {
+      const visitId = 'visit_001';
+      const doctorId = 'doctor_001';
+      
+      const response = await fetch(`/api/medical-summary/generate/${visitId}?doctorId=${doctorId}&patientId=${patientId}`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'text/event-stream',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('生成病例总结失败');
+      }
+      
+      alert('病例总结生成请求已发送，请查看服务端日志');
+    } catch (error) {
+      console.error('调用病例总结接口失败:', error);
+      alert('调用病例总结接口失败: ' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  };
+
   const generateMedicalRecord = () => {
     if (!selectedPatient || !consultationTranscript) return;
 
@@ -380,10 +406,21 @@ ${consultationTranscript}
                     <FileText className="w-6 h-6 text-blue-600" />
                     <h2>AI 病情摘要</h2>
                   </div>
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <Download className="w-4 h-4" />
-                    导入HIS系统
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="gap-2"
+                      onClick={() => generateMedicalSummaryFromAPI(selectedPatient.id)}
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      病例总结
+                    </Button>
+                    <Button variant="outline" size="sm" className="gap-2">
+                      <Download className="w-4 h-4" />
+                      导入HIS系统
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="space-y-4">
