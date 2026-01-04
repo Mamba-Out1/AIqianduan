@@ -18,6 +18,15 @@ async function apiRequest(url: string, options: RequestInit = {}) {
   return response;
 }
 
+// 患者就诊记录接口
+export const visitAPI = {
+  // 根据患者ID获取就诊记录
+  getPatientVisits: async (patientId: string) => {
+    const response = await apiRequest(`/api/visits/patient/${patientId}`);
+    return response.json();
+  },
+};
+
 // MedicalSummaryController 接口
 export const medicalSummaryAPI = {
   // 获取所有病历总结
@@ -60,6 +69,22 @@ export const medicalSummaryAPI = {
 };
 
 // 类型定义
+export interface VisitRecord {
+  id: number;
+  visitId: string;
+  patientId: string;
+  patientName: string;
+  doctorId: string;
+  visitType: string;
+  visitDate: string;
+  status: string;
+  chiefComplaint: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+  patient_name: string;
+}
+
 export interface MedicalSummaryResponse {
   summaryId: string;
   visitId: string;
