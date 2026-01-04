@@ -1,3 +1,5 @@
+import type { VisitType } from './visitTypeUtils';
+
 // API 基础配置
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -75,7 +77,7 @@ export interface VisitRecord {
   patientId: string;
   patientName: string;
   doctorId: string;
-  visitType: string;
+  visitType: VisitType;
   visitDate: string;
   status: string;
   chiefComplaint: string;
