@@ -6,6 +6,7 @@ import { Calendar, User, Stethoscope, FileText, Clock, AlertCircle } from 'lucid
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { ScrollArea } from './ui/scroll-area';
 import { visitAPI, medicalSummaryAPI, type VisitRecord, type MedicalSummaryResponse } from '../utils/medicalAPI';
+import { getVisitTypeDisplay } from '../utils/visitTypeUtils';
 
 interface VisitRecordsProps {
   patientId: string;
@@ -49,7 +50,7 @@ export function VisitRecords({ patientId, largeText, highContrast }: VisitRecord
           patientId: patientId,
           patientName: '张三',
           doctorId: 'D001',
-          visitType: '门诊',
+          visitType: 'CONSULTATION',
           visitDate: '2024-12-10',
           status: 'COMPLETED',
           chiefComplaint: '头痛、发热',
@@ -64,7 +65,7 @@ export function VisitRecords({ patientId, largeText, highContrast }: VisitRecord
           patientId: patientId,
           patientName: '张三',
           doctorId: 'D002',
-          visitType: '复诊',
+          visitType: 'FOLLOW_UP',
           visitDate: '2024-12-15',
           status: 'IN_PROGRESS',
           chiefComplaint: '复查血压',
@@ -169,7 +170,7 @@ export function VisitRecords({ patientId, largeText, highContrast }: VisitRecord
                       {visit.patient_name || visit.patientName}
                     </h3>
                     <Badge variant="outline" className={largeText ? 'text-base px-3 py-1' : ''}>
-                      {visit.visitType}
+                      {getVisitTypeDisplay(visit.visitType)}
                     </Badge>
                   </div>
                   
@@ -273,7 +274,7 @@ export function VisitRecords({ patientId, largeText, highContrast }: VisitRecord
                         <div>
                           <Label className={`font-medium ${largeText ? 'text-lg' : ''}`}>就诊类型</Label>
                           <p className={`text-gray-700 ${largeText ? 'text-lg' : ''}`}>
-                            {visit.visitType}
+                            {getVisitTypeDisplay(visit.visitType)}
                           </p>
                         </div>
                         <div>
