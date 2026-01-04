@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Calendar, User, Stethoscope, FileText, Clock, AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { ScrollArea } from './ui/scroll-area';
-import { visitAPI, type VisitRecord } from '../utils/medicalAPI';
+import { visitAPI, medicalSummaryAPI, type VisitRecord, type MedicalSummaryResponse } from '../utils/medicalAPI';
 
 interface VisitRecordsProps {
   patientId: string;
@@ -17,10 +17,21 @@ export function VisitRecords({ patientId, largeText, highContrast }: VisitRecord
   const [visits, setVisits] = useState<VisitRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [summaries, setSummaries] = useState<Record<string, MedicalSummaryResponse>>({});
+  const [loadingSummaries, setLoadingSummaries] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchVisitRecords();
   }, [patientId]);
+
+  useEffect(() => {
+    // 为已完成的就诊记录获取病历总结
+    visits.forEach(visit => {
+      if (visit.status === 'COMPLETED' && !summaries[visit.visitId] && !loadingSummaries[visit.visitId]) {
+        fetchMedicalSummary(visit.visitId);
+      }
+    });
+  }, [visits]);
 
   const fetchVisitRecords = async () => {
     try {
@@ -65,6 +76,18 @@ export function VisitRecords({ patientId, largeText, highContrast }: VisitRecord
       ]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMedicalSummary = async (visitId: string) => {
+    try {
+      setLoadingSummaries(prev => ({ ...prev, [visitId]: true }));
+      const summary = await medicalSummaryAPI.getSummaryByVisit(visitId);
+      setSummaries(prev => ({ ...prev, [visitId]: summary }));
+    } catch (err) {
+      console.error(`获取病历总结失败 (visitId: ${visitId}):`, err);
+    } finally {
+      setLoadingSummaries(prev => ({ ...prev, [visitId]: false }));
     }
   };
 
@@ -174,6 +197,48 @@ export function VisitRecords({ patientId, largeText, highContrast }: VisitRecord
                       {visit.chiefComplaint}
                     </p>
                   </div>
+                  
+                  {/* 病历总结显示（仅已完成的就诊） */}
+                  {visit.status === 'COMPLETED' && (
+                    <div className="mb-4">
+                      <p className={`text-gray-700 font-medium mb-2 ${largeText ? 'text-lg' : ''}`}>
+                        病历总结：
+                      </p>
+                      {loadingSummaries[visit.visitId] ? (
+                        <div className={`p-3 rounded-lg ${highContrast ? 'bg-gray-100 border border-black' : 'bg-blue-50'}`}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></div>
+                            <span className={`text-gray-600 ${largeText ? 'text-lg' : 'text-sm'}`}>加载病历总结中...</span>
+                          </div>
+                        </div>
+                      ) : summaries[visit.visitId] ? (
+                        <div className={`p-3 rounded-lg space-y-2 ${highContrast ? 'bg-gray-100 border border-black' : 'bg-green-50'}`}>
+                          {summaries[visit.visitId].symptomDetails && (
+                            <div>
+                              <span className={`font-medium text-gray-700 ${largeText ? 'text-base' : 'text-sm'}`}>症状详情：</span>
+                              <span className={`text-gray-600 ml-2 ${largeText ? 'text-base' : 'text-sm'}`}>{summaries[visit.visitId].symptomDetails}</span>
+                            </div>
+                          )}
+                          {summaries[visit.visitId].vitalSigns && (
+                            <div>
+                              <span className={`font-medium text-gray-700 ${largeText ? 'text-base' : 'text-sm'}`}>生命体征：</span>
+                              <span className={`text-gray-600 ml-2 ${largeText ? 'text-base' : 'text-sm'}`}>{summaries[visit.visitId].vitalSigns}</span>
+                            </div>
+                          )}
+                          {summaries[visit.visitId].currentMedications && (
+                            <div>
+                              <span className={`font-medium text-gray-700 ${largeText ? 'text-base' : 'text-sm'}`}>当前用药：</span>
+                              <span className={`text-gray-600 ml-2 ${largeText ? 'text-base' : 'text-sm'}`}>{summaries[visit.visitId].currentMedications}</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className={`p-3 rounded-lg ${highContrast ? 'bg-gray-100 border border-black' : 'bg-gray-50'}`}>
+                          <span className={`text-gray-500 ${largeText ? 'text-base' : 'text-sm'}`}>暂无病历总结</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex flex-col items-end gap-2">
@@ -246,6 +311,47 @@ export function VisitRecords({ patientId, largeText, highContrast }: VisitRecord
                           </p>
                         </div>
                       </div>
+                      
+                      {/* 病历总结详情（仅已完成的就诊） */}
+                      {visit.status === 'COMPLETED' && summaries[visit.visitId] && (
+                        <div>
+                          <Label className={`font-medium ${largeText ? 'text-lg' : ''}`}>病历总结</Label>
+                          <div className={`mt-2 space-y-3`}>
+                            {summaries[visit.visitId].symptomDetails && (
+                              <div className={`p-3 bg-gray-50 rounded-lg ${
+                                highContrast ? 'bg-gray-100 border border-black' : ''
+                              }`}>
+                                <p className={`font-medium text-gray-700 mb-1 ${largeText ? 'text-base' : 'text-sm'}`}>症状详情</p>
+                                <p className={`text-gray-600 ${largeText ? 'text-base' : 'text-sm'}`}>{summaries[visit.visitId].symptomDetails}</p>
+                              </div>
+                            )}
+                            {summaries[visit.visitId].vitalSigns && (
+                              <div className={`p-3 bg-gray-50 rounded-lg ${
+                                highContrast ? 'bg-gray-100 border border-black' : ''
+                              }`}>
+                                <p className={`font-medium text-gray-700 mb-1 ${largeText ? 'text-base' : 'text-sm'}`}>生命体征</p>
+                                <p className={`text-gray-600 ${largeText ? 'text-base' : 'text-sm'}`}>{summaries[visit.visitId].vitalSigns}</p>
+                              </div>
+                            )}
+                            {summaries[visit.visitId].pastMedicalHistory && (
+                              <div className={`p-3 bg-gray-50 rounded-lg ${
+                                highContrast ? 'bg-gray-100 border border-black' : ''
+                              }`}>
+                                <p className={`font-medium text-gray-700 mb-1 ${largeText ? 'text-base' : 'text-sm'}`}>既往病史</p>
+                                <p className={`text-gray-600 ${largeText ? 'text-base' : 'text-sm'}`}>{summaries[visit.visitId].pastMedicalHistory}</p>
+                              </div>
+                            )}
+                            {summaries[visit.visitId].currentMedications && (
+                              <div className={`p-3 bg-gray-50 rounded-lg ${
+                                highContrast ? 'bg-gray-100 border border-black' : ''
+                              }`}>
+                                <p className={`font-medium text-gray-700 mb-1 ${largeText ? 'text-base' : 'text-sm'}`}>当前用药</p>
+                                <p className={`text-gray-600 ${largeText ? 'text-base' : 'text-sm'}`}>{summaries[visit.visitId].currentMedications}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                       
                       <div>
                         <Label className={`font-medium ${largeText ? 'text-lg' : ''}`}>创建时间</Label>
