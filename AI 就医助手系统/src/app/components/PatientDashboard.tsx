@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Button } from './ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { LogOut, FileText, Settings, Brain } from 'lucide-react';
+import { LogOut, FileText, Settings, Brain, MessageCircle } from 'lucide-react';
 import { VisitRecords } from './VisitRecords';
 import { AccessibilitySettings } from './AccessibilitySettings';
 import { SmartTriage } from './SmartTriage';
+import { AIChat } from './AIChat';
 
 interface PatientDashboardProps {
   patientId: string;
@@ -68,7 +69,7 @@ export function PatientDashboard({ patientId, onLogout }: PatientDashboardProps)
       <div className="max-w-7xl mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           {/* 标签页导航 */}
-          <TabsList className={`grid w-full grid-cols-3 ${largeText ? 'h-14' : 'h-12'} ${
+          <TabsList className={`grid w-full grid-cols-4 ${largeText ? 'h-14' : 'h-12'} ${
             highContrast ? 'bg-white border-2 border-black' : 'bg-white/60 backdrop-blur-sm'
           }`}>
             <TabsTrigger 
@@ -104,6 +105,17 @@ export function PatientDashboard({ patientId, onLogout }: PatientDashboardProps)
               <Brain className="w-4 h-4" />
               智慧导诊
             </TabsTrigger>
+            <TabsTrigger 
+              value="chat" 
+              className={`gap-2 ${largeText ? 'text-lg px-6' : ''} ${
+                highContrast 
+                  ? 'data-[state=active]:bg-black data-[state=active]:text-white' 
+                  : 'data-[state=active]:bg-gradient-to-r data-[state=active]:from-teal-500 data-[state=active]:to-cyan-500 data-[state=active]:text-white'
+              }`}
+            >
+              <MessageCircle className="w-4 h-4" />
+              AI对话
+            </TabsTrigger>
           </TabsList>
 
           {/* 标签页内容 */}
@@ -128,6 +140,14 @@ export function PatientDashboard({ patientId, onLogout }: PatientDashboardProps)
             <SmartTriage
               largeText={largeText}
               highContrast={highContrast}
+            />
+          </TabsContent>
+
+          <TabsContent value="chat" className="space-y-6">
+            <AIChat
+              largeText={largeText}
+              highContrast={highContrast}
+              patientId={patientId}
             />
           </TabsContent>
         </Tabs>
