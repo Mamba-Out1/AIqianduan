@@ -1,11 +1,12 @@
 import type { VisitType } from './visitTypeUtils';
 
 // API 基础配置
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = 'http://localhost:8070';
 
 // 通用请求函数
 async function apiRequest(url: string, options: RequestInit = {}) {
-  const response = await fetch(url, {
+  const fullUrl = `${API_BASE_URL}${url}`;
+  const response = await fetch(fullUrl, {
     headers: {
       'Content-Type': 'application/json',
       ...options.headers,

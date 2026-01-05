@@ -15,7 +15,9 @@ import {
   User,
   QrCode,
   Sparkles,
-  Download
+  Download,
+  RefreshCw,
+  Users
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { ScrollArea } from './ui/scroll-area';
@@ -24,6 +26,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { SpeechTranscription } from '../utils/speechTranscription';
 import { MedicalSummaryPanel } from './MedicalSummaryPanel';
 import { medicalSummaryAPI } from '../utils/medicalAPI';
+import { visitsAPI, Visit, getStatusText, getStatusColor } from '../utils/visitsAPI';
+import { WaitingRoomView } from './WaitingRoomView';
 
 interface DoctorViewProps {
   accessibilityMode: boolean;
@@ -31,20 +35,17 @@ interface DoctorViewProps {
 
 interface Patient {
   id: string;
+  visitId: string;
+  patientId: string;
   name: string;
-  age: number;
-  gender: string;
-  checkInTime: Date;
+  doctorId: string;
+  visitType: string;
+  visitDate: string;
+  status: string;
   chiefComplaint: string;
-  severity: 'low' | 'medium' | 'high';
-  summary: {
-    chiefComplaint: string;
-    duration: string;
-    severity: string;
-    medications: string[];
-    additionalNotes: string;
-    symptoms: string;
-  };
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface ConsultationRecord {
@@ -65,8 +66,12 @@ interface MedicalSummary {
 }
 
 export function DoctorView({ accessibilityMode }: DoctorViewProps) {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'waiting-room'>('dashboard');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [consultationTranscript, setConsultationTranscript] = useState('');
   const [consultationRecords, setConsultationRecords] = useState<ConsultationRecord[]>([]);
@@ -78,8 +83,68 @@ export function DoctorView({ accessibilityMode }: DoctorViewProps) {
   const speechTranscription = useRef(new SpeechTranscription());
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const visualizerRef = useRef<NodeJS.Timeout | null>(null);
+  const currentDoctorId = 'doctor_001'; // 当前医生ID，实际应用中从登录状态获取
+
+  // 如果当前视图是待就诊界面且有选中的患者，直接渲染
+  if (currentView === 'waiting-room' && selectedPatient) {
+    // 转换为Visit类型
+    const visitPatient: Visit = {
+      id: parseInt(selectedPatient.id),
+      visitId: selectedPatient.visitId,
+      patientId: selectedPatient.patientId,
+      patientName: selectedPatient.name,
+      doctorId: selectedPatient.doctorId,
+      visitType: selectedPatient.visitType,
+      visitDate: selectedPatient.visitDate,
+      status: selectedPatient.status,
+      chiefComplaint: selectedPatient.chiefComplaint,
+      notes: selectedPatient.notes,
+      createdAt: selectedPatient.createdAt,
+      updatedAt: selectedPatient.updatedAt
+    };
+    
+    return (
+      <WaitingRoomView 
+        accessibilityMode={accessibilityMode}
+        patient={visitPatient}
+        onBack={() => {
+          setCurrentView('dashboard');
+          setSelectedPatient(null);
+        }}
+      />
+    );
+  }
+
+  // 加载患者数据
+  const loadPatients = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response = await visitsAPI.getVisitsByDoctor(currentDoctorId);
+      const patientData = response.visits.map(visit => ({
+        id: visit.id.toString(),
+        visitId: visit.visitId,
+        patientId: visit.patientId,
+        name: visit.patientName,
+        doctorId: visit.doctorId,
+        visitType: visit.visitType,
+        visitDate: visit.visitDate,
+        status: visit.status,
+        chiefComplaint: visit.chiefComplaint || '未填写',
+        notes: visit.notes || '',
+        createdAt: visit.createdAt,
+        updatedAt: visit.updatedAt
+      }));
+      setPatients(patientData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载患者数据失败');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
+    loadPatients();
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (visualizerRef.current) clearInterval(visualizerRef.current);
@@ -129,84 +194,13 @@ export function DoctorView({ accessibilityMode }: DoctorViewProps) {
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
-  const [patients] = useState<Patient[]>([
-    {
-      id: '1',
-      name: '张明远',
-      age: 68,
-      gender: '男',
-      checkInTime: new Date('2024-12-14T09:15:00'),
-      chiefComplaint: '头痛伴恶心',
-      severity: 'medium',
-      summary: {
-        chiefComplaint: '头痛伴恶心',
-        duration: '3天',
-        severity: '中度（影响睡眠）',
-        medications: ['布洛芬 1片'],
-        additionalNotes: '右侧太阳穴疼痛，发热37.5°C',
-        symptoms: '我最近三天一直头疼，特别是右边太阳穴那里，一阵一阵的疼，疼起来的时候还有点恶心想吐。昨天晚上疼得睡不着觉，吃了一片布洛芬，好了一点。我还有点发烧，体温大概37.5度左右。'
-      }
-    },
-    {
-      id: '2',
-      name: '汤魏诚',
-      age: 22,
-      gender: '男',
-      checkInTime: new Date('2024-12-14T09:30:00'),
-      chiefComplaint: '咳嗽、咽痛',
-      severity: 'low',
-      summary: {
-        chiefComplaint: '咳嗽伴咽痛',
-        duration: '5天',
-        severity: '轻度',
-        medications: ['蜂蜜水'],
-        additionalNotes: '干咳为主，无发热，咽部红肿',
-        symptoms: '喉咙痛了差不多5天了，开始只是有点干痒，现在吞咽的时候会疼。这两天开始咳嗽，是干咳，没有痰。没有发烧，就是嗓子不舒服。'
-      }
-    },
-    {
-      id: '3',
-      name: '李红梅',
-      age: 45,
-      gender: '女',
-      checkInTime: new Date('2024-12-14T10:00:00'),
-      chiefComplaint: '胃痛、反酸',
-      severity: 'medium',
-      summary: {
-        chiefComplaint: '胃痛伴反酸',
-        duration: '1周',
-        severity: '中度（饭后加重）',
-        medications: ['奥美拉唑 20mg'],
-        additionalNotes: '空腹及夜间疼痛明显，进食后缓解',
-        symptoms: '胃一直不太舒服，特别是吃完饭以后会疼，还经常反酸水，晚上睡觉的时候也会疼醒。已经吃了一周的奥美拉唑了，好像效果不是很明显。'
-      }
-    }
-  ]);
 
   const filteredPatients = patients.filter(patient => 
-    patient.name.includes(searchQuery) || 
-    patient.chiefComplaint.includes(searchQuery)
+    (patient.name || '').includes(searchQuery) || 
+    (patient.chiefComplaint || '').includes(searchQuery)
   );
 
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'high': return 'destructive';
-      case 'medium': return 'default';
-      case 'low': return 'secondary';
-      default: return 'outline';
-    }
-  };
-
-  const getSeverityText = (severity: string) => {
-    switch (severity) {
-      case 'high': return '紧急';
-      case 'medium': return '中等';
-      case 'low': return '轻症';
-      default: return '未知';
-    }
-  };
-
-  // 模拟扫码获取患者信息
+  // 扫码获取患者信息
   const scanPatientQRCode = () => {
     if (patients.length > 0) {
       setSelectedPatient(patients[0]);
@@ -242,8 +236,8 @@ export function DoctorView({ accessibilityMode }: DoctorViewProps) {
       const audioBlob = await speechTranscription.current.stopRecording();
       
       const result = await speechTranscription.current.transcribeAudio(audioBlob, {
-        userId: 'doctor_001',
-        visitId: selectedPatient ? `visit_${selectedPatient.id}_${Date.now()}` : `visit_${Date.now()}`,
+        userId: currentDoctorId,
+        visitId: selectedPatient ? selectedPatient.visitId : `visit_${Date.now()}`,
         language: 'autodialect',
         domain: 'medical'
       });
@@ -280,33 +274,22 @@ export function DoctorView({ accessibilityMode }: DoctorViewProps) {
 
     const summary = `【病历摘要】
 患者姓名：${selectedPatient.name}
-性别年龄：${selectedPatient.gender} ${selectedPatient.age}岁
+患者ID：${selectedPatient.patientId}
 就诊时间：${new Date().toLocaleString('zh-CN')}
+就诊类型：${selectedPatient.visitType}
 
-主诉：${selectedPatient.summary.chiefComplaint}
-病史：${selectedPatient.summary.symptoms}
-
-现病史：
-- 症状持续时间：${selectedPatient.summary.duration}
-- 严重程度：${selectedPatient.summary.severity}
-- 已用药物：${selectedPatient.summary.medications.join('、')}
-- 补充说明：${selectedPatient.summary.additionalNotes}
+主诉：${selectedPatient.chiefComplaint}
 
 问诊记录：
 ${consultationTranscript}
 
-初步诊断：偏头痛可能，需进一步检查排除器质性病变
-处理方案：
-1. 完善头颅CT检查
-2. 予以非甾体类抗炎药对症治疗
-3. 注意休息，避免劳累
-4. 如症状加重请及时复诊
+备注：${selectedPatient.notes}
 
-医生签名：王医生
+医生签名：${currentDoctorId}
 日期：${new Date().toLocaleDateString('zh-CN')}`;
 
     const newRecord: ConsultationRecord = {
-      patientId: selectedPatient.id,
+      patientId: selectedPatient.patientId,
       patientName: selectedPatient.name,
       transcript: consultationTranscript,
       timestamp: new Date(),
@@ -340,11 +323,32 @@ ${consultationTranscript}
               />
             </div>
 
+            {/* 进入待就诊界面 */}
+            <Button 
+              onClick={() => setCurrentView('waiting-room')}
+              className="w-full mb-4 gap-2"
+            >
+              <Users className="w-4 h-4" />
+              进入待就诊界面
+            </Button>
+
+            {/* 刷新数据 */}
+            <Button 
+              onClick={loadPatients}
+              variant="outline" 
+              className="w-full mb-4 gap-2"
+              disabled={loading}
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              刷新患者列表
+            </Button>
+
             {/* 扫码功能 */}
             <Button 
               onClick={scanPatientQRCode}
               variant="outline" 
               className="w-full mb-4 gap-2"
+              disabled={patients.length === 0}
             >
               <QrCode className="w-4 h-4" />
               扫描患者就诊码
@@ -362,41 +366,58 @@ ${consultationTranscript}
 
             {/* 患者列表 */}
             <ScrollArea className="h-[500px]">
-              <div className="space-y-3">
-                {filteredPatients.map((patient) => (
-                  <div
-                    key={patient.id}
-                    onClick={() => setSelectedPatient(patient)}
-                    className={`
-                      border rounded-lg p-4 cursor-pointer transition-all
-                      ${selectedPatient?.id === patient.id 
-                        ? 'border-blue-500 bg-blue-50' 
-                        : 'border-gray-200 hover:border-blue-300'
-                      }
-                    `}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={accessibilityMode ? 'text-lg' : ''}>
-                        {patient.name}
-                      </span>
-                      <Badge variant={getSeverityColor(patient.severity)}>
-                        {getSeverityText(patient.severity)}
-                      </Badge>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
+                  <span className="ml-2">加载中...</span>
+                </div>
+              ) : error ? (
+                <div className="text-center py-8">
+                  <AlertCircle className="w-12 h-12 mx-auto mb-2 text-red-400" />
+                  <p className="text-red-600 mb-2">加载失败</p>
+                  <p className="text-sm text-gray-600 mb-4">{error}</p>
+                  <Button onClick={loadPatients} variant="outline" size="sm">
+                    重新加载
+                  </Button>
+                </div>
+              ) : filteredPatients.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <User className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                  <p>暂无患者数据</p>
+                  <p className="text-sm">请检查后端服务是否正常运行</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredPatients.map((patient) => (
+                    <div
+                      key={patient.id}
+                      onClick={() => {
+                        setSelectedPatient(patient);
+                        setCurrentView('waiting-room');
+                      }}
+                      className="border rounded-lg p-4 cursor-pointer transition-all hover:border-blue-300"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={accessibilityMode ? 'text-lg' : ''}>
+                          {patient.name}
+                        </span>
+                        <Badge className={getStatusColor(patient.status)}>
+                          {getStatusText(patient.status)}
+                        </Badge>
+                      </div>
+                      <div className="text-sm text-gray-600 space-y-1">
+                        <p>患者ID: {patient.patientId}</p>
+                        <p className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {new Date(patient.visitDate).toLocaleString('zh-CN')}
+                        </p>
+                        <p className="text-gray-900">{patient.chiefComplaint}</p>
+                        <p className="text-xs text-gray-500">就诊类型: {patient.visitType}</p>
+                      </div>
                     </div>
-                    <div className="text-sm text-gray-600 space-y-1">
-                      <p>{patient.gender} · {patient.age}岁</p>
-                      <p className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {patient.checkInTime.toLocaleTimeString('zh-CN', { 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
-                        })}
-                      </p>
-                      <p className="text-gray-900">{patient.chiefComplaint}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </ScrollArea>
           </Card>
         </div>
@@ -405,12 +426,12 @@ ${consultationTranscript}
         <div className="md:col-span-2 space-y-6">
           {selectedPatient ? (
             <>
-              {/* 患者病情摘要 */}
+              {/* 患者基本信息 */}
               <Card className="p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <FileText className="w-6 h-6 text-blue-600" />
-                    <h2>AI 病情摘要</h2>
+                    <User className="w-6 h-6 text-blue-600" />
+                    <h2>患者信息</h2>
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" className="gap-2">
@@ -423,76 +444,60 @@ ${consultationTranscript}
                 <div className="space-y-4">
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-600 mb-1">患者信息</p>
+                      <p className="text-sm text-gray-600 mb-1">患者姓名</p>
                       <p className={accessibilityMode ? 'text-lg' : ''}>
-                        {selectedPatient.name} · {selectedPatient.gender} · {selectedPatient.age}岁
+                        {selectedPatient.name}
+                      </p>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <p className="text-sm text-gray-600 mb-1">患者ID</p>
+                      <p className={accessibilityMode ? 'text-lg' : ''}>
+                        {selectedPatient.patientId}
                       </p>
                     </div>
                     <div className="p-3 bg-gray-50 rounded-lg">
                       <p className="text-sm text-gray-600 mb-1">就诊时间</p>
                       <p className={accessibilityMode ? 'text-lg' : ''}>
-                        {selectedPatient.checkInTime.toLocaleString('zh-CN')}
+                        {new Date(selectedPatient.visitDate).toLocaleString('zh-CN')}
                       </p>
                     </div>
-                  </div>
-
-                  <Separator />
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm text-gray-600 mb-1">主诉</p>
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <p className="text-sm text-gray-600 mb-1">就诊类型</p>
                       <p className={accessibilityMode ? 'text-lg' : ''}>
-                        {selectedPatient.summary.chiefComplaint}
+                        {selectedPatient.visitType}
                       </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600 mb-1">持续时间</p>
-                      <p className={accessibilityMode ? 'text-lg' : ''}>
-                        {selectedPatient.summary.duration}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600 mb-1">严重程度</p>
-                      <p className={accessibilityMode ? 'text-lg' : ''}>
-                        {selectedPatient.summary.severity}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600 mb-1">已用药物</p>
-                      <div className="flex flex-wrap gap-1">
-                        {selectedPatient.summary.medications.map((med, idx) => (
-                          <Badge key={idx} variant="secondary">{med}</Badge>
-                        ))}
-                      </div>
                     </div>
                   </div>
 
                   <Separator />
 
                   <div>
-                    <p className="text-sm text-gray-600 mb-1">补充说明</p>
-                    <p className={`${accessibilityMode ? 'text-lg' : ''} text-gray-700`}>
-                      {selectedPatient.summary.additionalNotes}
+                    <p className="text-sm text-gray-600 mb-1">主诉</p>
+                    <p className={`${accessibilityMode ? 'text-lg' : ''} text-gray-900`}>
+                      {selectedPatient.chiefComplaint}
                     </p>
                   </div>
 
-                  <Separator />
+                  {selectedPatient.notes && (
+                    <>
+                      <Separator />
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">备注</p>
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <p className={`${accessibilityMode ? 'text-lg' : ''} text-gray-700`}>
+                            {selectedPatient.notes}
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  )}
 
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">患者原始描述</p>
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <p className={`${accessibilityMode ? 'text-lg' : ''} text-gray-700`}>
-                        {selectedPatient.summary.symptoms}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="p-3 bg-green-50 border border-green-200 rounded flex items-start gap-2">
-                    <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded flex items-start gap-2">
+                    <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5" />
                     <div className="text-sm">
-                      <p className="text-green-900">AI 可信度评估：高</p>
-                      <p className="text-green-700">
-                        症状描述完整，时间线清晰，包含关键信息（体温、用药记录）
+                      <p className="text-blue-900">就诊状态：{getStatusText(selectedPatient.status)}</p>
+                      <p className="text-blue-700">
+                        就诊ID: {selectedPatient.visitId}
                       </p>
                     </div>
                   </div>
@@ -502,8 +507,10 @@ ${consultationTranscript}
               {/* AI 病例总结面板 */}
               <Card className="p-6">
                 <MedicalSummaryPanel 
-                  patientId={selectedPatient.id}
+                  patientId={selectedPatient.patientId}
                   patientName={selectedPatient.name}
+                  visitId={selectedPatient.visitId}
+                  doctorId={selectedPatient.doctorId}
                   accessibilityMode={accessibilityMode}
                   onSummaryGenerated={(summary) => {
                     console.log('病例总结生成完成:', summary);

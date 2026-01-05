@@ -3,14 +3,17 @@ import { DoctorView } from './components/DoctorView';
 import { LoginSelect } from './components/LoginSelect';
 import { PatientLogin } from './components/PatientLogin';
 import { PatientDashboard } from './components/PatientDashboard';
+import { DoctorLogin } from './components/DoctorLogin';
+import { DoctorDashboard } from './components/DoctorDashboard';
 
 type UserRole = 'patient' | 'doctor' | null;
-type AppState = 'select' | 'patient-login' | 'patient-dashboard' | 'doctor-dashboard';
+type AppState = 'select' | 'patient-login' | 'patient-dashboard' | 'doctor-login' | 'doctor-dashboard';
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>('select');
   const [userRole, setUserRole] = useState<UserRole>(null);
   const [patientId, setPatientId] = useState<string>('');
+  const [doctorId, setDoctorId] = useState<string>('');
   const [accessibilityMode, setAccessibilityMode] = useState(false);
 
   const handleRoleSelect = (role: UserRole) => {
@@ -18,7 +21,7 @@ export default function App() {
     if (role === 'patient') {
       setAppState('patient-login');
     } else if (role === 'doctor') {
-      setAppState('doctor-dashboard');
+      setAppState('doctor-login');
     }
   };
 
@@ -27,10 +30,16 @@ export default function App() {
     setAppState('patient-dashboard');
   };
 
+  const handleDoctorLogin = (id: string) => {
+    setDoctorId(id);
+    setAppState('doctor-dashboard');
+  };
+
   const handleLogout = () => {
     setAppState('select');
     setUserRole(null);
     setPatientId('');
+    setDoctorId('');
   };
 
   const handleBackToSelect = () => {
@@ -60,11 +69,22 @@ export default function App() {
     );
   }
 
+  if (appState === 'doctor-login') {
+    return (
+      <DoctorLogin 
+        onLogin={handleDoctorLogin}
+        onBack={handleBackToSelect}
+      />
+    );
+  }
+
   if (appState === 'doctor-dashboard') {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <DoctorView accessibilityMode={accessibilityMode} />
-      </div>
+      <DoctorDashboard 
+        doctorId={doctorId}
+        onLogout={handleLogout}
+        accessibilityMode={accessibilityMode}
+      />
     );
   }
 

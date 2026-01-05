@@ -18,6 +18,8 @@ import { medicalSummaryAPI, MedicalSummaryResponse } from '../utils/medicalAPI';
 interface MedicalSummaryPanelProps {
   patientId: string;
   patientName: string;
+  visitId: string;
+  doctorId: string;
   accessibilityMode: boolean;
   onSummaryGenerated?: (summary: any) => void;
 }
@@ -26,7 +28,9 @@ type MedicalSummary = MedicalSummaryResponse;
 
 export function MedicalSummaryPanel({ 
   patientId, 
-  patientName, 
+  patientName,
+  visitId,
+  doctorId,
   accessibilityMode,
   onSummaryGenerated 
 }: MedicalSummaryPanelProps) {
@@ -36,8 +40,7 @@ export function MedicalSummaryPanel({
   const [error, setError] = useState<string | null>(null);
   const [streamContent, setStreamContent] = useState('');
 
-  const visitId = 'visit_001';
-  const doctorId = 'doctor_001';
+  // 使用传入的visitId和doctorId
 
   // 获取病历总结
   const fetchSummary = async () => {
@@ -116,8 +119,10 @@ export function MedicalSummaryPanel({
 
   // 组件加载时尝试获取现有总结
   useEffect(() => {
-    fetchSummary();
-  }, [patientId]);
+    if (visitId && patientId) {
+      fetchSummary();
+    }
+  }, [visitId, patientId]);
 
   return (
     <div className="space-y-4">
