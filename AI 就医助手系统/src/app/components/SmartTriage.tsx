@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -49,31 +49,35 @@ export function SmartTriage({ largeText, highContrast, patientId }: SmartTriageP
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [error, setError] = useState('');
 
+  // 组件加载时获取visitId
+  useEffect(() => {
+    const getVisitId = async () => {
+      try {
+        const response = await fetch(`/api/visits/next-visit-id/${encodeURIComponent(patientId)}`);
+        if (!response.ok) {
+          throw new Error('获取就诊ID失败');
+        }
+        const data = await response.json();
+        const newVisitId = data.visitId || data.nextVisitId || Object.values(data)[0];
+        if (!newVisitId) {
+          throw new Error('服务器未返回有效的就诊ID');
+        }
+        setVisitId(newVisitId as string);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '获取就诊ID失败');
+      }
+    };
+    getVisitId();
+  }, [patientId]);
+
   const handlePatientInfoSubmit = async () => {
     if (!patientInfo.patientName || !patientInfo.visitDate || !patientInfo.visitType) {
       setError('请填写完整的患者信息');
       return;
     }
     
-    try {
-      setError('');
-      // 获取 visit_id
-      const response = await fetch('/api/visits/next-visit-id');
-      if (!response.ok) {
-        throw new Error('获取就诊ID失败');
-      }
-      const data = await response.json();
-      // 根据接口文档，响应格式为 {"key": "value"}，需要找到包含visitId的键
-      const newVisitId = data.visitId || data.nextVisitId || Object.values(data)[0];
-      if (!newVisitId) {
-        throw new Error('服务器未返回有效的就诊ID');
-      }
-      
-      setVisitId(newVisitId as string);
-      setCurrentStep('symptom-recording');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '获取就诊ID失败');
-    }
+    setError('');
+    setCurrentStep('symptom-recording');
   };
 
   const handleTranscriptComplete = (transcript: string) => {
@@ -120,8 +124,25 @@ export function SmartTriage({ largeText, highContrast, patientId }: SmartTriageP
         
         const chunk = new TextDecoder().decode(value);
         summary += chunk;
-        setChiefComplaint(prev => ({ ...prev, summary }));
       }
+      
+      // 提取chief_complaint和notes内容
+      let formattedSummary = '';
+      try {
+        // 查找包含chief_complaint和notes的JSON数据
+        const messageMatch = summary.match(/"chief_complaint"\s*:\s*"([^"]*)"/); 
+        const notesMatch = summary.match(/"notes"\s*:\s*"([^"]*)"/); 
+        
+        const chiefComplaintContent = messageMatch ? messageMatch[1] : '暂未识别到患者主诉';
+        const notesContent = notesMatch ? notesMatch[1] : '暂未识别到患者病情';
+        
+        formattedSummary = `患者主诉：${chiefComplaintContent}\n\n患者病情：${notesContent}`;
+      } catch (e) {
+        // 如果解析失败，使用默认值
+        formattedSummary = '患者主诉：暂未识别到患者主诉\n\n患者病情：暂未识别到患者病情';
+      }
+      
+      setChiefComplaint(prev => ({ ...prev, summary: formattedSummary }));
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成病情概要失败');
     } finally {
@@ -149,22 +170,11 @@ export function SmartTriage({ largeText, highContrast, patientId }: SmartTriageP
     setError('');
 
     try {
-      const registrationData = {
-        visitId: visitId,
-        patientId: patientId,
-        patientName: patientInfo.patientName,
-        visitType: patientInfo.visitType,
-        visitDate: patientInfo.visitDate,
-        chiefComplaint: chiefComplaint.summary,
-        notes: `转录内容: ${chiefComplaint.transcript}`
-      };
-
-      const response = await fetch('/api/visits/register', {
+      const response = await fetch(`/api/visits/register/${encodeURIComponent(patientId)}/${encodeURIComponent(patientInfo.patientName)}/${encodeURIComponent(patientInfo.visitDate)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(registrationData)
+        }
       });
 
       if (!response.ok) {

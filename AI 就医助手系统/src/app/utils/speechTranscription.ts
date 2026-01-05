@@ -196,10 +196,13 @@ export class SpeechTranscription {
         const data = await response.json();
         console.log('转录响应数据:', data);
         
+        // 检查响应状态和转录文本
         if (data.status === 'SUCCESS') {
+          const transcriptionText = data.transcriptionText || data.fullText || '';
           return {
             status: 'SUCCESS',
-            transcriptionText: data.transcriptionText || data.fullText || '',
+            transcriptionText: transcriptionText,
+            fullText: transcriptionText,
             message: data.message
           };
         } else {
