@@ -140,6 +140,7 @@ export function PatientDashboard({ patientId, onLogout }: PatientDashboardProps)
             <SmartTriage
               largeText={largeText}
               highContrast={highContrast}
+              patientId={patientId}
             />
           </TabsContent>
 

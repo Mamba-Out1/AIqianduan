@@ -103,12 +103,22 @@ export function useSpeechTranscription() {
       }
       
       const result = await speechTranscription.current.transcribeAudio(audioBlob, config);
+      console.log('转录结果:', result);
       
-      if (result.status === 'SUCCESS' && result.transcriptionText) {
-        setTranscript(result.transcriptionText);
-        setStatus('ready');
-        console.log('转录成功:', result.transcriptionText);
-        return result.transcriptionText;
+      if (result.status === 'SUCCESS') {
+        const transcriptionText = result.transcriptionText || result.fullText || '';
+        if (transcriptionText) {
+          setTranscript(transcriptionText);
+          setStatus('ready');
+          console.log('转录成功:', transcriptionText);
+          return transcriptionText;
+        } else {
+          setStatus('error');
+          const errorMsg = '转录结果为空，请重新录制';
+          setErrorMessage(errorMsg);
+          console.error('转录结果为空');
+          return null;
+        }
       } else {
         setStatus('error');
         const errorMsg = result.errorMessage || '转录失败，请检查网络连接或重试';

@@ -102,17 +102,19 @@ export function AIChat({ largeText, highContrast, patientId }: AIChatProps) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
+        
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6));
+              const data = JSON.parse(line.substring(6));
               
-              if (data.event === 'message' && data.answer) {
-                assistantMessage.content += data.answer;
+              if (data.event === 'message' && data.content) {
+                assistantMessage.content += (typeof data.content === 'string' ? data.content : JSON.stringify(data.content));
                 setMessages(prev => 
                   prev.map(msg => 
                     msg.id === assistantMessage.id 
@@ -120,13 +122,18 @@ export function AIChat({ largeText, highContrast, patientId }: AIChatProps) {
                       : msg
                   )
                 );
+              } else if (data.event === 'completed') {
+                console.log('对话完成');
+              } else if (data.event === 'error') {
+                console.error('Dify对话错误:', data.message);
+                throw new Error(data.message || '对话处理失败');
               }
               
               if (data.conversation_id && !conversationId) {
                 setConversationId(data.conversation_id);
               }
             } catch (e) {
-              console.warn('解析SSE数据失败:', line);
+              console.error('解析SSE数据失败:', e, 'line:', line);
             }
           }
         }
