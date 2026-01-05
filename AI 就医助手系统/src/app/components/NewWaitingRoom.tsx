@@ -24,6 +24,7 @@ import { medicalSummaryAPI } from '../utils/medicalAPI';
 interface NewWaitingRoomProps {
   accessibilityMode: boolean;
   onBack: () => void;
+  doctorId: string;
 }
 
 interface MedicalSummary {
@@ -33,7 +34,7 @@ interface MedicalSummary {
   current_medications: string;
 }
 
-export function NewWaitingRoom({ accessibilityMode, onBack }: NewWaitingRoomProps) {
+export function NewWaitingRoom({ accessibilityMode, onBack, doctorId }: NewWaitingRoomProps) {
   const [patients, setPatients] = useState<Visit[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Visit | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,7 +54,6 @@ export function NewWaitingRoom({ accessibilityMode, onBack }: NewWaitingRoomProp
   
   const speechTranscription = useRef(new SpeechTranscription());
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const currentDoctorId = 'doctor_001';
 
   useEffect(() => {
     loadPatients();
@@ -67,7 +67,7 @@ export function NewWaitingRoom({ accessibilityMode, onBack }: NewWaitingRoomProp
       setLoading(true);
       setError('');
       
-      const response = await visitsAPI.getVisitsByDoctor(currentDoctorId);
+      const response = await visitsAPI.getVisitsByDoctor(doctorId);
       const waitingPatients = response.visits.filter(visit => 
         visit.status === 'SCHEDULED' || visit.status === 'IN_PROGRESS'
       );
@@ -125,7 +125,7 @@ export function NewWaitingRoom({ accessibilityMode, onBack }: NewWaitingRoomProp
       const audioBlob = await speechTranscription.current.stopRecording();
       
       const result = await speechTranscription.current.transcribeAudio(audioBlob, {
-        userId: currentDoctorId,
+        userId: doctorId,
         visitId: selectedPatient.visitId,
         language: 'autodialect',
         domain: 'medical'
@@ -154,7 +154,7 @@ export function NewWaitingRoom({ accessibilityMode, onBack }: NewWaitingRoomProp
       
       const response = await medicalSummaryAPI.generateSummaryStream(
         selectedPatient.visitId,
-        currentDoctorId,
+        doctorId,
         selectedPatient.patientId
       );
 

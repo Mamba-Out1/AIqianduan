@@ -4,8 +4,8 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Stethoscope, LogOut, User, Clock, FileText, ArrowLeft, CheckCircle } from 'lucide-react';
-import { DoctorView } from './DoctorView';
 import { NewWaitingRoom } from './NewWaitingRoom';
+import { CompletedVisitView } from './CompletedVisitView';
 
 interface Visit {
   visitId: string;
@@ -25,8 +25,7 @@ interface DoctorDashboardProps {
 export function DoctorDashboard({ doctorId, onLogout, accessibilityMode = false }: DoctorDashboardProps) {
   const [visits, setVisits] = useState<Visit[]>([]);
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
-  const [completing, setCompleting] = useState(false);
-  const [showWaitingRoom, setShowWaitingRoom] = useState(false);
+  const [viewMode, setViewMode] = useState<'dashboard' | 'waiting' | 'completed'>('dashboard');
 
   const doctors = [
     { id: 'doctor_001', name: '王医生', department: '内科' },
@@ -56,38 +55,8 @@ export function DoctorDashboard({ doctorId, onLogout, accessibilityMode = false 
     }
   };
 
-  const handleCompleteVisit = async () => {
-    if (!selectedVisit) return;
-    
-    try {
-      setCompleting(true);
-      
-      const response = await fetch(`http://localhost:8070/api/visits/${selectedVisit.visitId}/status`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'COMPLETED' })
-      });
-      
-      if (response.ok) {
-        setVisits(prev => prev.map(v => 
-          v.visitId === selectedVisit.visitId 
-            ? { ...v, status: 'COMPLETED' as const }
-            : v
-        ));
-        setSelectedVisit(null);
-      } else {
-        alert('结束就诊失败，请重试');
-      }
-    } catch (error) {
-      console.log('API调用失败:', error);
-      alert('结束就诊失败，请重试');
-    } finally {
-      setCompleting(false);
-    }
-  };
-
-  // 新的待就诊界面
-  if (showWaitingRoom) {
+  // 待就诊流程
+  if (viewMode === 'waiting') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-green-50 to-teal-100">
         <div className="bg-white/80 backdrop-blur-sm border-b border-emerald-100 px-6 py-4">
@@ -117,55 +86,51 @@ export function DoctorDashboard({ doctorId, onLogout, accessibilityMode = false 
         </div>
         <NewWaitingRoom 
           accessibilityMode={accessibilityMode} 
-          onBack={() => setShowWaitingRoom(false)} 
+          onBack={() => setViewMode('dashboard')} 
+          doctorId={doctorId}
         />
       </div>
     );
   }
 
-  // 就诊界面
-  if (selectedVisit) {
+  // 已就诊患者查看
+  if (viewMode === 'completed' && selectedVisit) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-green-50 to-teal-100">
         <div className="bg-white/80 backdrop-blur-sm border-b border-emerald-100 px-6 py-4">
           <div className="flex items-center justify-between max-w-7xl mx-auto">
             <div className="flex items-center gap-3">
-              <Button 
-                variant="outline" 
-                onClick={() => setSelectedVisit(null)}
-                className="gap-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                返回列表
-              </Button>
+              <div className="p-2 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full">
+                <Stethoscope className="w-6 h-6 text-white" />
+              </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">
-                  {selectedVisit.patientName} - {selectedVisit.chiefComplaint}
+                <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-green-600 bg-clip-text text-transparent">
+                  医生工作台 - 已就诊查看
                 </h1>
                 <p className="text-sm text-gray-600">
-                  就诊ID: {selectedVisit.visitId} | 患者ID: {selectedVisit.patientId}
+                  {doctor?.name} ({doctorId}) - {doctor?.department}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              {selectedVisit.status === 'IN_PROGRESS' && (
-                <Button 
-                  onClick={handleCompleteVisit}
-                  disabled={completing}
-                  className="gap-2 bg-green-600 hover:bg-green-700"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  {completing ? '结束中...' : '结束就诊'}
-                </Button>
-              )}
-              <Button variant="outline" onClick={onLogout} className="gap-2">
-                <LogOut className="w-4 h-4" />
-                退出登录
-              </Button>
-            </div>
+            <Button 
+              variant="outline" 
+              onClick={onLogout} 
+              className="gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+            >
+              <LogOut className="w-4 h-4" />
+              退出登录
+            </Button>
           </div>
         </div>
-        <DoctorView accessibilityMode={false} />
+        <CompletedVisitView 
+          accessibilityMode={accessibilityMode} 
+          onBack={() => {
+            setViewMode('dashboard');
+            setSelectedVisit(null);
+          }} 
+          visit={selectedVisit}
+          doctorId={doctorId}
+        />
       </div>
     );
   }
@@ -233,49 +198,20 @@ export function DoctorDashboard({ doctorId, onLogout, accessibilityMode = false 
               </TabsList>
 
               <TabsContent value="pending" className="mt-6">
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <p className="text-sm text-gray-600">
-                      共 {pendingVisits.length} 位待就诊患者
-                    </p>
-                    <Button 
-                      onClick={() => setShowWaitingRoom(true)}
-                      className="gap-2 bg-emerald-600 hover:bg-emerald-700"
-                    >
-                      <Stethoscope className="w-4 h-4" />
-                      进入待就诊管理
-                    </Button>
-                  </div>
-                  {pendingVisits.map(visit => (
-                    <Card 
-                      key={visit.visitId} 
-                      className="p-4 hover:shadow-md transition-shadow border-l-4 border-l-yellow-400 cursor-pointer"
-                      onClick={() => setSelectedVisit(visit)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-blue-100 rounded-full">
-                            <User className="w-4 h-4 text-blue-600" />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-gray-900">{visit.patientName}</h3>
-                            <p className="text-sm text-gray-600">患者ID: {visit.patientId}</p>
-                            <p className="text-sm text-gray-700">{visit.chiefComplaint}</p>
-                            <p className="text-xs text-gray-500">{visit.visitDate}</p>
-                          </div>
-                        </div>
-                        <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
-                          待就诊
-                        </Badge>
-                      </div>
-                    </Card>
-                  ))}
-                  {pendingVisits.length === 0 && (
-                    <div className="text-center py-12 text-gray-500">
-                      <Clock className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                      <p>暂无待就诊患者</p>
-                    </div>
-                  )}
+                <div className="text-center py-12">
+                  <Stethoscope className="w-16 h-16 mx-auto mb-4 text-emerald-600" />
+                  <h3 className="text-xl font-semibold mb-2">待就诊管理</h3>
+                  <p className="text-gray-600 mb-6">
+                    共 {pendingVisits.length} 位待就诊患者
+                  </p>
+                  <Button 
+                    onClick={() => setViewMode('waiting')}
+                    size="lg"
+                    className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    <Stethoscope className="w-5 h-5" />
+                    开始就诊
+                  </Button>
                 </div>
               </TabsContent>
 
@@ -285,7 +221,10 @@ export function DoctorDashboard({ doctorId, onLogout, accessibilityMode = false 
                     <Card 
                       key={visit.visitId} 
                       className="p-4 hover:shadow-md transition-shadow border-l-4 border-l-green-400 cursor-pointer"
-                      onClick={() => setSelectedVisit(visit)}
+                      onClick={() => {
+                        setSelectedVisit(visit);
+                        setViewMode('completed');
+                      }}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
