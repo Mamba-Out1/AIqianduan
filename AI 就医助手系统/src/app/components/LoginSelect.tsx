@@ -1,9 +1,9 @@
 import { Card } from './ui/card';
 import { Button } from './ui/button';
-import { User, Stethoscope } from 'lucide-react';
+import { User, Stethoscope, Shield } from 'lucide-react';
 
 interface LoginSelectProps {
-  onSelectRole: (role: 'patient' | 'doctor') => void;
+  onSelectRole: (role: 'patient' | 'doctor' | 'admin') => void;
 }
 
 export function LoginSelect({ onSelectRole }: LoginSelectProps) {
@@ -43,6 +43,19 @@ export function LoginSelect({ onSelectRole }: LoginSelectProps) {
               <div className="flex-1">
                 <h3 className="text-lg font-semibold text-gray-900">医生端</h3>
                 <p className="text-gray-600">管理患者，生成病例总结</p>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-6 hover:shadow-xl transition-all cursor-pointer border-0 bg-white/80 backdrop-blur-sm hover:bg-white/90"
+                onClick={() => onSelectRole('admin')}>
+            <div className="flex items-center space-x-4">
+              <div className="p-3 bg-gradient-to-r from-purple-100 to-indigo-100 rounded-full">
+                <Shield className="w-8 h-8 text-purple-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900">管理员</h3>
+                <p className="text-gray-600">管理医生信息，系统配置</p>
               </div>
             </div>
           </Card>

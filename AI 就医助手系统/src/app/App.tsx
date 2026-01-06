@@ -5,15 +5,18 @@ import { PatientLogin } from './components/PatientLogin';
 import { PatientDashboard } from './components/PatientDashboard';
 import { DoctorLogin } from './components/DoctorLogin';
 import { DoctorDashboard } from './components/DoctorDashboard';
+import { AdminLogin } from './components/AdminLogin';
+import { AdminDashboard } from './components/AdminDashboard';
 
-type UserRole = 'patient' | 'doctor' | null;
-type AppState = 'select' | 'patient-login' | 'patient-dashboard' | 'doctor-login' | 'doctor-dashboard';
+type UserRole = 'patient' | 'doctor' | 'admin' | null;
+type AppState = 'select' | 'patient-login' | 'patient-dashboard' | 'doctor-login' | 'doctor-dashboard' | 'admin-login' | 'admin-dashboard';
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>('select');
   const [userRole, setUserRole] = useState<UserRole>(null);
   const [patientId, setPatientId] = useState<string>('');
   const [doctorId, setDoctorId] = useState<string>('');
+  const [adminId, setAdminId] = useState<string>('');
   const [accessibilityMode, setAccessibilityMode] = useState(false);
 
   const handleRoleSelect = (role: UserRole) => {
@@ -22,6 +25,8 @@ export default function App() {
       setAppState('patient-login');
     } else if (role === 'doctor') {
       setAppState('doctor-login');
+    } else if (role === 'admin') {
+      setAppState('admin-login');
     }
   };
 
@@ -35,11 +40,17 @@ export default function App() {
     setAppState('doctor-dashboard');
   };
 
+  const handleAdminLogin = (id: string) => {
+    setAdminId(id);
+    setAppState('admin-dashboard');
+  };
+
   const handleLogout = () => {
     setAppState('select');
     setUserRole(null);
     setPatientId('');
     setDoctorId('');
+    setAdminId('');
   };
 
   const handleBackToSelect = () => {
@@ -84,6 +95,24 @@ export default function App() {
         doctorId={doctorId}
         onLogout={handleLogout}
         accessibilityMode={accessibilityMode}
+      />
+    );
+  }
+
+  if (appState === 'admin-login') {
+    return (
+      <AdminLogin 
+        onLogin={handleAdminLogin}
+        onBack={handleBackToSelect}
+      />
+    );
+  }
+
+  if (appState === 'admin-dashboard') {
+    return (
+      <AdminDashboard 
+        adminId={adminId}
+        onLogout={handleLogout}
       />
     );
   }
