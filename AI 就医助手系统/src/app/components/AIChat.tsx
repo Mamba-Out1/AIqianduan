@@ -5,7 +5,7 @@ import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { VoiceRecorder } from './VoiceRecorder';
-import { MessageCircle, Send, Mic, Bot, User, Loader2 } from 'lucide-react';
+import { MessageCircle, Send, Mic, Bot, User, Loader2, Volume2 } from 'lucide-react';
 
 interface AIChatProps {
   largeText: boolean;
@@ -33,6 +33,7 @@ export function AIChat({ largeText, highContrast, patientId }: AIChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string>('');
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -200,6 +201,145 @@ export function AIChat({ largeText, highContrast, patientId }: AIChatProps) {
     }
   };
 
+  const handleTextToSpeech = async (messageId: string, content: string) => {
+    if (playingMessageId === messageId) {
+      // 如果正在播放，停止播放
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      setPlayingMessageId(null);
+      return;
+    }
+
+    try {
+      setPlayingMessageId(messageId);
+      
+      const response = await fetch('/api/tts/speak', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ text: content })
+      });
+
+      if (!response.ok) {
+        throw new Error('语音播报失败');
+      }
+
+      const contentType = response.headers.get('content-type');
+      
+      if (contentType?.includes('application/json')) {
+        const jsonData = await response.json();
+        console.log('TTS JSON响应:', jsonData);
+        
+        let audioUrl;
+        if (jsonData.audioUrl) {
+          audioUrl = jsonData.audioUrl;
+          console.log('使用音频URL:', audioUrl);
+        } else if (jsonData.audioData) {
+          const audioBlob = new Blob([Uint8Array.from(atob(jsonData.audioData), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
+          audioUrl = URL.createObjectURL(audioBlob);
+        } else {
+          throw new Error('无效的TTS响应格式');
+        }
+        
+        const audio = new Audio(audioUrl);
+        
+        audio.onloadedmetadata = () => {
+          console.log('音频元数据加载完成，时长:', audio.duration, '秒');
+          // 如果音频时长小于2秒，使用Web Speech API作为备选
+          if (audio.duration < 2) {
+            console.log('音频时长过短，使用Web Speech API');
+            audio.pause();
+            if (jsonData.audioData) {
+              URL.revokeObjectURL(audioUrl);
+            }
+            // 使用Web Speech API
+            if ('speechSynthesis' in window) {
+              const utterance = new SpeechSynthesisUtterance(content);
+              utterance.lang = 'zh-CN';
+              utterance.rate = 0.9;
+              utterance.pitch = 1;
+              utterance.volume = 1;
+              
+              utterance.onend = () => {
+                setPlayingMessageId(null);
+              };
+              
+              utterance.onerror = () => {
+                setPlayingMessageId(null);
+              };
+              
+              window.speechSynthesis.speak(utterance);
+            } else {
+              setPlayingMessageId(null);
+            }
+            return;
+          }
+        };
+        
+        audio.onended = () => {
+          console.log('音频播放结束');
+          setPlayingMessageId(null);
+          if (jsonData.audioData) {
+            URL.revokeObjectURL(audioUrl);
+          }
+        };
+        
+        audio.onerror = (e) => {
+          console.error('Audio play error:', e, '音频URL:', audioUrl);
+          setPlayingMessageId(null);
+          if (jsonData.audioData) {
+            URL.revokeObjectURL(audioUrl);
+          }
+        };
+        
+        await audio.play();
+      } else {
+        // 处理直接的音频数据
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        
+        audio.onended = () => {
+          setPlayingMessageId(null);
+          URL.revokeObjectURL(audioUrl);
+        };
+        
+        audio.onerror = (e) => {
+          console.error('Audio play error:', e);
+          setPlayingMessageId(null);
+          URL.revokeObjectURL(audioUrl);
+        };
+        
+        await audio.play();
+      }
+    } catch (error) {
+      console.error('语音播报错误:', error);
+      // 如果后端TTS失败，使用Web Speech API作为备选
+      if ('speechSynthesis' in window) {
+        console.log('后端TTS失败，使用Web Speech API');
+        const utterance = new SpeechSynthesisUtterance(content);
+        utterance.lang = 'zh-CN';
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        utterance.volume = 1;
+        
+        utterance.onend = () => {
+          setPlayingMessageId(null);
+        };
+        
+        utterance.onerror = () => {
+          setPlayingMessageId(null);
+        };
+        
+        window.speechSynthesis.speak(utterance);
+      } else {
+        setPlayingMessageId(null);
+      }
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
@@ -215,89 +355,105 @@ export function AIChat({ largeText, highContrast, patientId }: AIChatProps) {
         highContrast ? 'bg-white border-2 border-black' : 'bg-white'
       }`}>
         {/* 消息区域 */}
-        <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
-          <div className="space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex gap-3 ${
-                  message.type === 'user' ? 'justify-end' : 'justify-start'
-                }`}
-              >
-                {message.type === 'assistant' && (
-                  <Avatar className="w-8 h-8 mt-1">
+        <div className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full p-4">
+            <div className="space-y-4 min-h-full">
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`flex gap-3 ${
+                    message.type === 'user' ? 'justify-end' : 'justify-start'
+                  }`}
+                >
+                  {message.type === 'assistant' && (
+                    <Avatar className="w-8 h-8 mt-1 flex-shrink-0">
+                      <AvatarFallback className="bg-gradient-to-r from-teal-500 to-cyan-500 text-white">
+                        <Bot className="w-4 h-4" />
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
+                  
+                  <div className={`max-w-[70%] relative ${
+                    message.type === 'user' ? 'order-1' : ''
+                  }`}>
+                    <div className={`rounded-2xl px-4 py-3 ${
+                      message.type === 'user'
+                        ? highContrast 
+                          ? 'bg-black text-white'
+                          : 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white'
+                        : highContrast
+                          ? 'bg-gray-100 border border-black text-black'
+                          : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      <p className={`whitespace-pre-wrap ${largeText ? 'text-lg' : ''}`}>
+                        {message.content}
+                      </p>
+                      {/* 语音播报按钮 */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className={`absolute -top-2 -right-2 h-6 w-6 p-0 rounded-full ${
+                          message.type === 'user'
+                            ? 'bg-white/20 hover:bg-white/30 text-white'
+                            : 'bg-gray-200 hover:bg-gray-300 text-gray-600'
+                        } ${playingMessageId === message.id ? 'animate-pulse' : ''}`}
+                        onClick={() => handleTextToSpeech(message.id, message.content)}
+                        disabled={!message.content.trim()}
+                      >
+                        <Volume2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                    <p className={`text-xs text-gray-500 mt-1 ${
+                      message.type === 'user' ? 'text-right' : 'text-left'
+                    } ${highContrast ? 'text-gray-700' : ''}`}>
+                      {message.timestamp.toLocaleTimeString('zh-CN', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  </div>
+
+                  {message.type === 'user' && (
+                    <Avatar className="w-8 h-8 mt-1 flex-shrink-0">
+                      <AvatarFallback className={
+                        highContrast 
+                          ? 'bg-gray-600 text-white'
+                          : 'bg-gradient-to-r from-blue-500 to-purple-500 text-white'
+                      }>
+                        <User className="w-4 h-4" />
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
+                </div>
+              ))}
+              
+              {isLoading && (
+                <div className="flex gap-3 justify-start">
+                  <Avatar className="w-8 h-8 mt-1 flex-shrink-0">
                     <AvatarFallback className="bg-gradient-to-r from-teal-500 to-cyan-500 text-white">
                       <Bot className="w-4 h-4" />
                     </AvatarFallback>
                   </Avatar>
-                )}
-                
-                <div className={`max-w-[70%] ${
-                  message.type === 'user' ? 'order-1' : ''
-                }`}>
-                  <div className={`rounded-2xl px-4 py-3 ${
-                    message.type === 'user'
-                      ? highContrast 
-                        ? 'bg-black text-white'
-                        : 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white'
-                      : highContrast
-                        ? 'bg-gray-100 border border-black text-black'
-                        : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    <p className={`whitespace-pre-wrap ${largeText ? 'text-lg' : ''}`}>
-                      {message.content}
-                    </p>
-                  </div>
-                  <p className={`text-xs text-gray-500 mt-1 ${
-                    message.type === 'user' ? 'text-right' : 'text-left'
-                  } ${highContrast ? 'text-gray-700' : ''}`}>
-                    {message.timestamp.toLocaleTimeString('zh-CN', {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </p>
-                </div>
-
-                {message.type === 'user' && (
-                  <Avatar className="w-8 h-8 mt-1">
-                    <AvatarFallback className={
-                      highContrast 
-                        ? 'bg-gray-600 text-white'
-                        : 'bg-gradient-to-r from-blue-500 to-purple-500 text-white'
-                    }>
-                      <User className="w-4 h-4" />
-                    </AvatarFallback>
-                  </Avatar>
-                )}
-              </div>
-            ))}
-            
-            {isLoading && (
-              <div className="flex gap-3 justify-start">
-                <Avatar className="w-8 h-8 mt-1">
-                  <AvatarFallback className="bg-gradient-to-r from-teal-500 to-cyan-500 text-white">
-                    <Bot className="w-4 h-4" />
-                  </AvatarFallback>
-                </Avatar>
-                <div className="max-w-[70%]">
-                  <div className={`rounded-2xl px-4 py-3 ${
-                    highContrast
-                      ? 'bg-gray-100 border border-black'
-                      : 'bg-gray-100'
-                  }`}>
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin text-teal-600" />
-                      <span className={`text-gray-600 ${largeText ? 'text-lg' : ''}`}>
-                        AI正在思考中...
-                      </span>
+                  <div className="max-w-[70%]">
+                    <div className={`rounded-2xl px-4 py-3 ${
+                      highContrast
+                        ? 'bg-gray-100 border border-black'
+                        : 'bg-gray-100'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin text-teal-600" />
+                        <span className={`text-gray-600 ${largeText ? 'text-lg' : ''}`}>
+                          AI正在思考中...
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        </ScrollArea>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </ScrollArea>
+        </div>
 
         {/* 语音录制区域 */}
         {showVoiceRecorder && (
