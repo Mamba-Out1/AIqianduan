@@ -97,45 +97,82 @@ export function AIChat({ largeText, highContrast, patientId }: AIChatProps) {
 
       const decoder = new TextDecoder();
       let buffer = '';
+      let isSSEFormat = false;
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
+        console.log('收到chunk:', chunk);
         buffer += chunk;
         
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+        // 检测是否为SSE格式
+        if (!isSSEFormat && buffer.includes('data: ')) {
+          isSSEFormat = true;
+        }
+        
+        if (isSSEFormat) {
+          // SSE格式处理
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.substring(6));
-              
-              if (data.event === 'message' && data.content) {
-                assistantMessage.content += (typeof data.content === 'string' ? data.content : JSON.stringify(data.content));
-                setMessages(prev => 
-                  prev.map(msg => 
-                    msg.id === assistantMessage.id 
-                      ? { ...msg, content: assistantMessage.content }
-                      : msg
-                  )
-                );
-              } else if (data.event === 'completed') {
-                console.log('对话完成');
-              } else if (data.event === 'error') {
-                console.error('Dify对话错误:', data.message);
-                throw new Error(data.message || '对话处理失败');
+          for (const line of lines) {
+            console.log('处理行:', line);
+            if (line.trim() && line.includes('data:')) {
+              try {
+                // 处理重复的data:前缀和HTML编码
+                let jsonStr = line;
+                if (jsonStr.startsWith('data:data:')) {
+                  jsonStr = jsonStr.substring(10).trim();
+                } else if (jsonStr.startsWith('data:')) {
+                  jsonStr = jsonStr.substring(5).trim();
+                }
+                
+                // 解码HTML实体
+                jsonStr = jsonStr.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+                
+                console.log('解析JSON:', jsonStr);
+                if (jsonStr) {
+                  const data = JSON.parse(jsonStr);
+                  console.log('解析后的数据:', data);
+                  
+                  if (data.event === 'message' && data.content) {
+                    console.log('添加内容:', data.content);
+                    assistantMessage.content += data.content;
+                    setMessages(prev => 
+                      prev.map(msg => 
+                        msg.id === assistantMessage.id 
+                          ? { ...msg, content: assistantMessage.content }
+                          : msg
+                      )
+                    );
+                  } else if (data.event === 'completed') {
+                    console.log('对话完成');
+                  } else if (data.event === 'error') {
+                    console.error('Dify对话错误:', data.message);
+                    throw new Error(data.message || '对话处理失败');
+                  }
+                  
+                  if (data.conversation_id && !conversationId) {
+                    setConversationId(data.conversation_id);
+                  }
+                }
+              } catch (e) {
+                console.error('解析SSE数据失败:', e, 'line:', line);
               }
-              
-              if (data.conversation_id && !conversationId) {
-                setConversationId(data.conversation_id);
-              }
-            } catch (e) {
-              console.error('解析SSE数据失败:', e, 'line:', line);
             }
           }
+        } else {
+          // 纯文本流处理（像SmartTriage一样）
+          assistantMessage.content = buffer;
+          setMessages(prev => 
+            prev.map(msg => 
+              msg.id === assistantMessage.id 
+                ? { ...msg, content: assistantMessage.content }
+                : msg
+            )
+          );
         }
       }
     } catch (error) {
