@@ -8,22 +8,36 @@ export interface Doctor {
   status: 'ACTIVE' | 'INACTIVE';
 }
 
-const API_BASE_URL = 'http://localhost:8070/api';
+const API_BASE_URL = 'http://localhost:8070';
 
 export const doctorAPI = {
   // 获取所有医生
   async getAllDoctors(): Promise<Doctor[]> {
-    const response = await fetch(`${API_BASE_URL}/doctors`);
-    if (!response.ok) {
-      throw new Error('获取医生列表失败');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/doctors`, {
+        method: 'GET',
+        mode: 'cors',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return response.json();
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error('无法连接到后端服务，请确认服务是否启动');
+      }
+      throw error;
     }
-    return response.json();
   },
 
   // 创建医生
   async createDoctor(doctor: Omit<Doctor, 'id'>): Promise<Doctor> {
-    const response = await fetch(`${API_BASE_URL}/doctors`, {
+    const response = await fetch(`${API_BASE_URL}/api/doctors`, {
       method: 'POST',
+      mode: 'cors',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -38,8 +52,9 @@ export const doctorAPI = {
 
   // 更新医生
   async updateDoctor(id: number, doctor: Omit<Doctor, 'id'>): Promise<Doctor> {
-    const response = await fetch(`${API_BASE_URL}/doctors/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/api/doctors/${id}`, {
       method: 'PUT',
+      mode: 'cors',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -54,8 +69,12 @@ export const doctorAPI = {
 
   // 删除医生
   async deleteDoctor(id: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/doctors/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/api/doctors/${id}`, {
       method: 'DELETE',
+      mode: 'cors',
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
     if (!response.ok) {
       throw new Error('删除医生失败');
